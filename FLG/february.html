@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Marble Run Lab</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { margin: 0; padding: 0; overflow: hidden; background-color: #111827; user-select: none; }
+        canvas { display: block; outline: none; }
+        
+        /* Custom Scrollbar for panels */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #1f2937; }
+        ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 3px; }
+        
+        .tool-btn {
+            transition: all 0.2s;
+        }
+        .tool-btn:hover {
+            transform: translateY(-2px);
+            background-color: #374151;
+        }
+        .tool-btn.active {
+            background-color: #3b82f6;
+            color: white;
+            border-color: #60a5fa;
+        }
+
+        .glass-panel {
+            background: rgba(31, 41, 55, 0.9);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(75, 85, 99, 0.5);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 6px;
+            background: #374151;
+            border-radius: 3px;
+            outline: none;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #60a5fa;
+            cursor: pointer;
+            transition: background .15s ease-in-out;
+        }
+        input[type="range"]::-webkit-slider-thumb:hover {
+            background: #93c5fd;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Main Canvas -->
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- Top Toolbar (Track Pieces) -->
+    <div class="absolute top-4 left-1/2 transform -translate-x-1/2 glass-panel rounded-xl p-2 flex gap-2 items-center z-10">
+        <button class="tool-btn p-3 rounded-lg text-gray-300 flex flex-col items-center gap-1 w-16" onclick="game.addPiece('floor')">
+            <i class="fa-solid fa-minus text-xl"></i>
+            <span class="text-xs font-medium">Floor</span>
+        </button>
+        <button class="tool-btn p-3 rounded-lg text-gray-300 flex flex-col items-center gap-1 w-16" onclick="game.addPiece('wall')">
+            <i class="fa-solid fa-grip-lines-vertical text-xl"></i>
+            <span class="text-xs font-medium">Wall</span>
+        </button>
+        <button class="tool-btn p-3 rounded-lg text-gray-300 flex flex-col items-center gap-1 w-16" onclick="game.addPiece('ramp-l')">
+            <i class="fa-solid fa-play fa-rotate-180 text-xl" style="transform: scaleY(-1) rotate(30deg);"></i>
+            <span class="text-xs font-medium">Ramp L</span>
+        </button>
+        <button class="tool-btn p-3 rounded-lg text-gray-300 flex flex-col items-center gap-1 w-16" onclick="game.addPiece('ramp-r')">
+            <i class="fa-solid fa-play text-xl" style="transform: rotate(30deg);"></i>
+            <span class="text-xs font-medium">Ramp R</span>
+        </button>
+        <button class="tool-btn p-3 rounded-lg text-gray-300 flex flex-col items-center gap-1 w-16" onclick="game.addPiece('spinner')">
+            <i class="fa-solid fa-fan text-xl"></i>
+            <span class="text-xs font-medium">Spinner</span>
+        </button>
+         <button class="tool-btn p-3 rounded-lg text-gray-300 flex flex-col items-center gap-1 w-16" onclick="game.addPiece('bumper')">
+            <i class="fa-regular fa-circle text-xl"></i>
+            <span class="text-xs font-medium">Bumper</span>
+        </button>
+    </div>
+
+    <!-- Right Panel (Controls & Settings) -->
+    <div class="absolute top-4 right-4 flex flex-col gap-4 w-64">
+        
+        <!-- Game Controls -->
+        <div class="glass-panel rounded-xl p-4">
+            <h2 class="text-white text-sm font-bold mb-3 uppercase tracking-wider text-blue-400">Controls</h2>
+            <div class="flex gap-2 mb-3">
+                <button id="btn-run" class="flex-1 bg-green-600 hover:bg-green-500 text-white py-2 rounded-lg font-bold shadow-lg transition" onclick="game.toggleSimulation()">
+                    <i class="fa-solid fa-play mr-2"></i> Run
+                </button>
+                <button class="flex-1 bg-red-600 hover:bg-red-500 text-white py-2 rounded-lg font-bold shadow-lg transition" onclick="game.clearMarbles()">
+                    <i class="fa-solid fa-trash mr-2"></i> Clear
+                </button>
+            </div>
+            <div class="text-xs text-gray-400 space-y-1">
+                <p><i class="fa-solid fa-computer-mouse w-5 text-center"></i> <b>Left Click:</b> Select / Drag</p>
+                <p><i class="fa-solid fa-arrows-up-down-left-right w-5 text-center"></i> <b>Mid Click / Space:</b> Pan View</p>
+                <p><i class="fa-solid fa-rotate-right w-5 text-center"></i> <b>'R' Key:</b> Rotate Selected</p>
+                <p><i class="fa-solid fa-trash-can w-5 text-center"></i> <b>Del Key:</b> Delete Selected</p>
+                <div class="flex items-center gap-2 mt-2 pt-2 border-t border-gray-700">
+                     <input type="checkbox" id="snapToggle" class="w-4 h-4 rounded text-blue-600 bg-gray-700 border-gray-600 focus:ring-blue-600 ring-offset-gray-800" checked onchange="game.toggleSnap(this.checked)">
+                     <label for="snapToggle" class="text-gray-300 select-none cursor-pointer">Snap to Grid (20px)</label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Marble Settings -->
+        <div class="glass-panel rounded-xl p-4">
+            <h2 class="text-white text-sm font-bold mb-3 uppercase tracking-wider text-purple-400">Marble Lab</h2>
+            
+            <div class="space-y-4">
+                <div>
+                    <div class="flex justify-between text-xs text-gray-300 mb-1">
+                        <span>Radius (Size)</span>
+                        <span id="val-radius" class="font-mono text-blue-300">15px</span>
+                    </div>
+                    <input type="range" min="5" max="40" value="15" id="sl-radius" oninput="game.updateMarbleConfig('radius', this.value)">
+                </div>
+
+                <div>
+                    <div class="flex justify-between text-xs text-gray-300 mb-1">
+                        <span>Density (Weight)</span>
+                        <span id="val-density" class="font-mono text-blue-300">1.0</span>
+                    </div>
+                    <input type="range" min="0.1" max="10" step="0.1" value="1" id="sl-density" oninput="game.updateMarbleConfig('density', this.value)">
+                </div>
+
+                <div>
+                    <div class="flex justify-between text-xs text-gray-300 mb-1">
+                        <span>Bounciness</span>
+                        <!-- Fixed ID mismatch here: val-bounciness -> val-restitution -->
+                        <span id="val-restitution" class="font-mono text-blue-300">0.5</span>
+                    </div>
+                    <input type="range" min="0" max="1.2" step="0.1" value="0.5" id="sl-bounciness" oninput="game.updateMarbleConfig('restitution', this.value)">
+                </div>
+
+                <div class="bg-gray-800 rounded p-3 text-center border border-gray-700">
+                    <p class="text-xs text-gray-400 mb-2">Click anywhere to spawn with these stats</p>
+                    <div id="marble-preview" class="w-8 h-8 rounded-full bg-blue-500 mx-auto shadow-[0_0_15px_rgba(59,130,246,0.5)] transition-all duration-300"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Area -->
+    <div id="toast" class="fixed bottom-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded-full shadow-2xl transition-opacity duration-300 opacity-0 pointer-events-none z-50 border border-gray-600 flex items-center gap-3">
+        <i class="fa-solid fa-info-circle text-blue-400"></i>
+        <span id="toast-msg">Notification</span>
+    </div>
+
+    <script>
+        // Matter.js aliases
+        const Engine = Matter.Engine,
+              Render = Matter.Render,
+              Runner = Matter.Runner,
+              Bodies = Matter.Bodies,
+              Composite = Matter.Composite,
+              Events = Matter.Events,
+              Mouse = Matter.Mouse,
+              MouseConstraint = Matter.MouseConstraint,
+              Vector = Matter.Vector,
+              Body = Matter.Body,
+              Constraint = Matter.Constraint;
+
+        class MarbleGame {
+            constructor() {
+                this.canvas = document.getElementById('gameCanvas');
+                this.width = window.innerWidth;
+                this.height = window.innerHeight;
+                this.canvas.width = this.width;
+                this.canvas.height = this.height;
+                this.ctx = this.canvas.getContext('2d');
+
+                // Physics Engine Setup
+                this.engine = Engine.create();
+                this.world = this.engine.world;
+                this.engine.gravity.y = 1; // Standard gravity
+                this.runner = Runner.create();
+
+                // State
+                this.isRunning = false; // Simulation state
+                this.selectedBody = null;
+                this.draggedBody = null;
+                this.snapToGrid = true;
+                this.gridSize = 40; // Pixels
+                
+                // Camera
+                this.camera = { x: 0, y: 0, zoom: 1 };
+                this.isPanning = false;
+                this.lastMouse = { x: 0, y: 0 };
+
+                // Marble Config
+                this.marbleConfig = {
+                    radius: 15,
+                    density: 1,
+                    restitution: 0.5,
+                    color: '#60a5fa'
+                };
+
+                // Mouse Interaction
+                this.mousePos = { x: 0, y: 0 }; // Screen coordinates
+                this.worldMouse = { x: 0, y: 0 }; // World coordinates
+
+                this.init();
+            }
+
+            init() {
+                // Resize listener
+                window.addEventListener('resize', () => {
+                    this.width = window.innerWidth;
+                    this.height = window.innerHeight;
+                    this.canvas.width = this.width;
+                    this.canvas.height = this.height;
+                });
+
+                // Input Listeners
+                this.canvas.addEventListener('mousedown', this.handleMouseDown.bind(this));
+                this.canvas.addEventListener('mousemove', this.handleMouseMove.bind(this));
+                this.canvas.addEventListener('mouseup', this.handleMouseUp.bind(this));
+                this.canvas.addEventListener('wheel', this.handleWheel.bind(this));
+                
+                // Keyboard
+                window.addEventListener('keydown', (e) => {
+                    if (e.key === 'Delete' || e.key === 'Backspace') this.deleteSelected();
+                    if (e.key.toLowerCase() === 'r') this.rotateSelected();
+                    if (e.code === 'Space') this.isPanning = true;
+                });
+                window.addEventListener('keyup', (e) => {
+                    if (e.code === 'Space') this.isPanning = false;
+                });
+
+                // Start Loop
+                Runner.run(this.runner, this.engine);
+                this.loop();
+
+                // Add initial floor
+                const floor = Bodies.rectangle(0, 400, 800, 40, { 
+                    isStatic: true,
+                    render: { fillStyle: '#374151' },
+                    label: 'piece'
+                });
+                Composite.add(this.world, floor);
+                this.showToast("Welcome! Drag parts from top to build.");
+            }
+
+            // --- Core Loop ---
+            loop() {
+                requestAnimationFrame(this.loop.bind(this));
+                
+                // We render manually for full control
+                this.render();
+            }
+
+            // --- Coordinate Helpers ---
+            screenToWorld(x, y) {
+                return {
+                    x: (x - this.width / 2) / this.camera.zoom + this.camera.x,
+                    y: (y - this.height / 2) / this.camera.zoom + this.camera.y
+                };
+            }
+
+            worldToScreen(x, y) {
+                return {
+                    x: (x - this.camera.x) * this.camera.zoom + this.width / 2,
+                    y: (y - this.camera.y) * this.camera.zoom + this.height / 2
+                };
+            }
+
+            // --- Interaction Logic ---
+            handleMouseDown(e) {
+                this.lastMouse = { x: e.clientX, y: e.clientY };
+                const worldPos = this.screenToWorld(e.clientX, e.clientY);
+
+                // Middle click or Spacebar for Pan
+                if (e.button === 1 || this.isPanning) {
+                    this.isPanning = true;
+                    this.canvas.style.cursor = 'grabbing';
+                    return;
+                }
+
+                // Check for body click
+                const bodies = Composite.allBodies(this.world);
+                // Simple point check (AABB first for speed, then precise if needed, but simple distance often enough for UI)
+                // Matter.Query.point is accurate
+                const clickedBodies = Matter.Query.point(bodies, worldPos);
+
+                if (clickedBodies.length > 0) {
+                    // Prioritize non-static (marbles) if running, else static (pieces)
+                    // Actually, let's prioritize Pieces for selection unless it's a marble
+                    let target = clickedBodies[clickedBodies.length - 1]; // Topmost usually
+                    
+                    if(target.label === 'marble' && this.isRunning) {
+                        // Let physics engine handle marble interaction if we added MouseConstraint, 
+                        // but here we are manual. Let's just select pieces.
+                    }
+                    
+                    if (target.label === 'piece' || target.label === 'spinner') {
+                        this.selectedBody = target;
+                        this.draggedBody = target;
+                        // Calculate offset to prevent snapping center to mouse
+                        this.dragOffset = {
+                            x: target.position.x - worldPos.x,
+                            y: target.position.y - worldPos.y
+                        };
+                        // Temporarily set to kinematic if needed, but setting position directly works for static
+                        return;
+                    }
+                } else {
+                    // Clicked empty space
+                    if (!this.draggedBody) {
+                        this.selectedBody = null;
+                        // Spawn marble if clicking empty space
+                        this.spawnMarble(worldPos.x, worldPos.y);
+                    }
+                }
+            }
+
+            handleMouseMove(e) {
+                const dx = e.clientX - this.lastMouse.x;
+                const dy = e.clientY - this.lastMouse.y;
+                this.lastMouse = { x: e.clientX, y: e.clientY };
+                const worldPos = this.screenToWorld(e.clientX, e.clientY);
+                this.worldMouse = worldPos;
+
+                if (this.isPanning) {
+                    this.camera.x -= dx / this.camera.zoom;
+                    this.camera.y -= dy / this.camera.zoom;
+                    return;
+                }
+
+                if (this.draggedBody) {
+                    let newX = worldPos.x + this.dragOffset.x;
+                    let newY = worldPos.y + this.dragOffset.y;
+
+                    if (this.snapToGrid) {
+                        newX = Math.round(newX / this.gridSize) * this.gridSize;
+                        newY = Math.round(newY / this.gridSize) * this.gridSize;
+                    }
+
+                    // Move the body
+                    Body.setPosition(this.draggedBody, { x: newX, y: newY });
+                    
+                    // If it's a spinner, we must move its constraint pivot too
+                    if(this.draggedBody.plugin && this.draggedBody.plugin.constraint) {
+                         this.draggedBody.plugin.constraint.pointA = { x: newX, y: newY };
+                    }
+                }
+                
+                // Cursor style
+                const bodies = Matter.Query.point(Composite.allBodies(this.world), worldPos);
+                const hovering = bodies.some(b => b.label === 'piece' || b.label === 'spinner');
+                this.canvas.style.cursor = this.isPanning ? 'grabbing' : (hovering ? 'move' : 'default');
+            }
+
+            handleMouseUp(e) {
+                this.isPanning = false;
+                this.draggedBody = null;
+                this.canvas.style.cursor = 'default';
+                if(e.button === 1) this.isPanning = false; // Middle click release
+            }
+
+            handleWheel(e) {
+                e.preventDefault();
+                const zoomSensitivity = 0.001;
+                const newZoom = Math.max(0.1, Math.min(5, this.camera.zoom - e.deltaY * zoomSensitivity));
+                
+                // Zoom towards mouse pointer logic
+                // 1. Get world pos before zoom
+                const mouseWorldBefore = this.screenToWorld(e.clientX, e.clientY);
+                
+                this.camera.zoom = newZoom;
+                
+                // 2. Get world pos after zoom (would be different if cam center stayed same)
+                const mouseWorldAfter = this.screenToWorld(e.clientX, e.clientY);
+                
+                // 3. Shift camera to compensate
+                this.camera.x += (mouseWorldBefore.x - mouseWorldAfter.x);
+                this.camera.y += (mouseWorldBefore.y - mouseWorldAfter.y);
+            }
+
+            // --- Game Logic ---
+            addPiece(type) {
+                const cx = this.camera.x;
+                const cy = this.camera.y;
+                let body;
+                const commonProps = { isStatic: true, label: 'piece', friction: 0, restitution: 0.2 };
+
+                switch(type) {
+                    case 'floor':
+                        body = Bodies.rectangle(cx, cy, 200, 20, commonProps);
+                        break;
+                    case 'wall':
+                        body = Bodies.rectangle(cx, cy, 20, 200, commonProps);
+                        break;
+                    case 'ramp-l':
+                         // Use vertices for a proper triangle ramp or rotated box
+                        body = Bodies.rectangle(cx, cy, 200, 20, { 
+                            ...commonProps, 
+                            angle: -Math.PI / 6 
+                        });
+                        break;
+                    case 'ramp-r':
+                        body = Bodies.rectangle(cx, cy, 200, 20, { 
+                            ...commonProps, 
+                            angle: Math.PI / 6 
+                        });
+                        break;
+                    case 'bumper':
+                         body = Bodies.circle(cx, cy, 30, { 
+                            isStatic: true, 
+                            label: 'piece', 
+                            restitution: 1.2,
+                            render: { fillStyle: '#ef4444' }
+                        });
+                        break;
+                    case 'spinner':
+                        // A rectangle that can rotate freely
+                        body = Bodies.rectangle(cx, cy, 150, 15, {
+                            label: 'spinner',
+                            frictionAir: 0.01
+                        });
+                        // Add a constraint to pin it
+                        const constraint = Constraint.create({
+                            pointA: { x: cx, y: cy },
+                            bodyB: body,
+                            pointB: { x: 0, y: 0 },
+                            length: 0,
+                            stiffness: 1
+                        });
+                        // Store constraint on body to move it later
+                        body.plugin = { constraint: constraint };
+                        Composite.add(this.world, constraint);
+                        break;
+                }
+
+                if (body) {
+                    Composite.add(this.world, body);
+                    this.selectedBody = body;
+                    this.showToast(`Added ${type}`);
+                }
+            }
+
+            spawnMarble(x, y) {
+                const m = this.marbleConfig;
+                const marble = Bodies.circle(x, y, parseInt(m.radius), {
+                    density: parseFloat(m.density) * 0.001, // Scale down for matter.js standard
+                    restitution: parseFloat(m.restitution),
+                    friction: 0.005,
+                    label: 'marble',
+                    render: { fillStyle: m.color }
+                });
+                Composite.add(this.world, marble);
+            }
+
+            deleteSelected() {
+                if (this.selectedBody) {
+                    // Check if it has a constraint (spinner)
+                    if (this.selectedBody.plugin && this.selectedBody.plugin.constraint) {
+                        Composite.remove(this.world, this.selectedBody.plugin.constraint);
+                    }
+                    Composite.remove(this.world, this.selectedBody);
+                    this.selectedBody = null;
+                    this.showToast("Deleted");
+                }
+            }
+
+            rotateSelected() {
+                if (this.selectedBody) {
+                    Body.setAngle(this.selectedBody, this.selectedBody.angle + Math.PI / 4); // 45 deg
+                    this.showToast("Rotated 45°");
+                }
+            }
+
+            toggleSimulation() {
+                // Matter.js runner is always running, but we can pause physics updates if we wanted
+                // Actually, in a sandbox, physics usually always runs.
+                // The button might just be "Run" to indicate intent, but technically we are live.
+                // Let's make "Run" just unfreeze existing marbles if we froze them, or maybe just a placebo for "Go ahead spawn things".
+                // Better yet: "Pause/Resume" physics.
+                this.runner.enabled = !this.runner.enabled;
+                const btn = document.getElementById('btn-run');
+                if (this.runner.enabled) {
+                    btn.innerHTML = '<i class="fa-solid fa-pause mr-2"></i> Pause';
+                    btn.classList.add('bg-yellow-600');
+                    btn.classList.remove('bg-green-600');
+                } else {
+                    btn.innerHTML = '<i class="fa-solid fa-play mr-2"></i> Run';
+                    btn.classList.add('bg-green-600');
+                    btn.classList.remove('bg-yellow-600');
+                }
+            }
+
+            clearMarbles() {
+                const marbles = Composite.allBodies(this.world).filter(b => b.label === 'marble');
+                Composite.remove(this.world, marbles);
+                this.showToast("Marbles Cleared");
+            }
+
+            toggleSnap(val) {
+                this.snapToGrid = val;
+            }
+
+            updateMarbleConfig(key, value) {
+                this.marbleConfig[key] = value;
+                
+                // UI Updates
+                const el = document.getElementById(`val-${key}`);
+                if (el) {
+                    el.innerText = value + (key === 'radius' ? 'px' : '');
+                }
+                
+                // Update preview visual
+                const preview = document.getElementById('marble-preview');
+                const scale = this.marbleConfig.radius / 15; // Base visual size
+                
+                // Color shift based on density
+                let hue = 200; // Blue default
+                const density = parseFloat(this.marbleConfig.density);
+                if (density > 2) hue = 0; // Red (Heavy)
+                else if (density < 0.5) hue = 120; // Green (Light)
+                else hue = 200 - (density-1)*100;
+                
+                const color = `hsl(${hue}, 70%, 50%)`;
+                this.marbleConfig.color = color;
+                
+                preview.style.backgroundColor = color;
+                preview.style.boxShadow = `0 0 15px ${color}`;
+                preview.style.transform = `scale(${scale})`;
+            }
+
+            showToast(msg) {
+                const toast = document.getElementById('toast');
+                document.getElementById('toast-msg').innerText = msg;
+                toast.classList.remove('opacity-0');
+                setTimeout(() => toast.classList.add('opacity-0'), 2000);
+            }
+
+            // --- Rendering ---
+            render() {
+                // Clear background
+                this.ctx.fillStyle = '#111827';
+                this.ctx.fillRect(0, 0, this.width, this.height);
+
+                // Save context for camera transform
+                this.ctx.save();
+                
+                // Apply Camera
+                this.ctx.translate(this.width / 2, this.height / 2);
+                this.ctx.scale(this.camera.zoom, this.camera.zoom);
+                this.ctx.translate(-this.camera.x, -this.camera.y);
+
+                // Draw Grid (Infinite)
+                this.drawGrid();
+
+                // Draw Bodies
+                const bodies = Composite.allBodies(this.world);
+                
+                // Draw Constraints (Spinners pivots)
+                const constraints = Composite.allConstraints(this.world);
+                this.ctx.beginPath();
+                for (let c of constraints) {
+                    if (c.label === 'Mouse Constraint') continue;
+                    const posA = c.pointA; // World pos for A
+                    // BodyB is the spinner, local anchor is 0,0
+                    const posB = c.bodyB ? Vector.add(c.bodyB.position, c.pointB) : c.pointB;
+                    
+                    this.ctx.moveTo(posA.x, posA.y);
+                    this.ctx.lineTo(posB.x, posB.y);
+                }
+                this.ctx.strokeStyle = '#6b7280';
+                this.ctx.lineWidth = 2;
+                this.ctx.stroke();
+
+
+                for (let body of bodies) {
+                    this.ctx.beginPath();
+                    
+                    // Vertices
+                    const vertices = body.vertices;
+                    this.ctx.moveTo(vertices[0].x, vertices[0].y);
+                    for (let j = 1; j < vertices.length; j += 1) {
+                        this.ctx.lineTo(vertices[j].x, vertices[j].y);
+                    }
+                    this.ctx.lineTo(vertices[0].x, vertices[0].y);
+
+                    // Styling based on type
+                    if (body.label === 'marble') {
+                        this.ctx.fillStyle = body.render.fillStyle || this.marbleConfig.color;
+                        this.ctx.fill();
+                        this.ctx.strokeStyle = 'white';
+                        this.ctx.lineWidth = 1;
+                        this.ctx.stroke();
+                        
+                        // Shine effect
+                        this.ctx.fillStyle = 'rgba(255,255,255,0.3)';
+                        this.ctx.beginPath();
+                        this.ctx.arc(body.position.x - body.circleRadius*0.3, body.position.y - body.circleRadius*0.3, body.circleRadius*0.2, 0, Math.PI*2);
+                        this.ctx.fill();
+                    } else if (body.label === 'piece' || body.label === 'spinner') {
+                        this.ctx.fillStyle = '#1f2937';
+                        this.ctx.fill();
+                        
+                        // Selection Highlight
+                        if (body === this.selectedBody) {
+                            this.ctx.strokeStyle = '#60a5fa'; // Blue
+                            this.ctx.lineWidth = 2 / this.camera.zoom + 2;
+                            this.ctx.shadowBlur = 10;
+                            this.ctx.shadowColor = '#60a5fa';
+                        } else {
+                            this.ctx.strokeStyle = '#4b5563'; // Gray
+                            this.ctx.lineWidth = 2;
+                            this.ctx.shadowBlur = 0;
+                        }
+                        this.ctx.stroke();
+                        this.ctx.shadowBlur = 0; // Reset
+                        
+                        // Draw internal stripes for "Construction" look
+                        if(body.label === 'piece') {
+                            this.ctx.save();
+                            this.ctx.clip();
+                            this.ctx.strokeStyle = '#374151';
+                            this.ctx.lineWidth = 2;
+                            // Simple hack for texture
+                            // Not implemented for performance/complexity balance in single file
+                            this.ctx.restore();
+                        }
+                    }
+                }
+
+                // Draw Ghost for drag (optional, but real-time move is better)
+
+                this.ctx.restore();
+            }
+
+            drawGrid() {
+                const zoom = this.camera.zoom;
+                // Don't draw if zoomed too far out
+                if (zoom < 0.2) return;
+
+                const step = 40;
+                const left = this.camera.x - (this.width / 2) / zoom;
+                const right = this.camera.x + (this.width / 2) / zoom;
+                const top = this.camera.y - (this.height / 2) / zoom;
+                const bottom = this.camera.y + (this.height / 2) / zoom;
+
+                // Snap start to grid
+                const startX = Math.floor(left / step) * step;
+                const startY = Math.floor(top / step) * step;
+
+                this.ctx.beginPath();
+                this.ctx.strokeStyle = '#1f2937'; // Very dark gray
+                this.ctx.lineWidth = 1 / zoom; // Keep lines thin regardless of zoom
+
+                for (let x = startX; x < right; x += step) {
+                    this.ctx.moveTo(x, top);
+                    this.ctx.lineTo(x, bottom);
+                }
+                for (let y = startY; y < bottom; y += step) {
+                    this.ctx.moveTo(left, y);
+                    this.ctx.lineTo(right, y);
+                }
+                this.ctx.stroke();
+
+                // Origin marker
+                this.ctx.beginPath();
+                this.ctx.strokeStyle = '#4b5563';
+                this.ctx.lineWidth = 2 / zoom;
+                this.ctx.moveTo(0, -20); this.ctx.lineTo(0, 20);
+                this.ctx.moveTo(-20, 0); this.ctx.lineTo(20, 0);
+                this.ctx.stroke();
+            }
+        }
+
+        // Initialize
+        const game = new MarbleGame();
+    </script>
+</body>
+</html>
